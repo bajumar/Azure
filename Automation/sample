@@ -1,1 +1,38 @@
-# Sample
+# Sample: Retrieve Azure PaaS Public IP Ranges for Azure SQL and add them to Azure Storage Firewall exceptions
+
+# Note:
+#   You may want to delete the existing Firewall exceptions first if updating/renewing them for maintenance
+#   https://docs.microsoft.com/en-us/powershell/module/az.storage/remove-azstorageaccountnetworkrule
+
+# Import the latest versions from the Modules Gallery:
+#   Az.Accounts
+#   Az.Network
+#   Az.Storage
+
+# Variables - replace as needed, or substitute with Azure Automation Variables in Assets
+$subName = "{subscription}"
+$rgrName = "{resourcegroup}"
+$sacName = "{storageaccount}"
+$locName = "canadacentral"
+$resName = "Sql.CanadaCentral"
+
+# Get the provisioned Azure Automation SPN, login to Azure with it, then select the Subscription
+$connection = Get-AutomationConnection -Name AzureRunAsConnection 
+$account= Connect-AzAccount -ServicePrincipal -Tenant $connection.TenantID -ApplicationId $connection.ApplicationID -CertificateThumbprint $connection.CertificateThumbprint
+Select-AzSubscription -Subscription $subName
+
+# Get the PaaS Service Tags Public IPs list (Note: Location only verifies version and does not filter on Region)
+$poshArray = Get-AzNetworkServiceTag -location $locName
+
+# Filter the list to get the information for a specific PaaS Resource type and/or Region
+$addrArray = $poshArray.Values | Where-Object { $_.Name -eq $resName }
+
+# Pattern-match only IPv4 Addresses as Storage Firewall currently does not support IPv6
+$ipv4Array = @($addrArray.Properties.AddressPrefixes) -like'*.*.*.*/*'
+
+# Iterate through the array to add each address to the Firewall
+Foreach ($ipv4 in $ipv4Array) {
+    Add-AzStorageAccountNetworkRule -ResourceGroupName $rgrName -AccountName $sacName -IPAddressOrRange $ipv4;
+}
+
+# Done!
